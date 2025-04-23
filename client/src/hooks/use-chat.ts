@@ -9,6 +9,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 const MOCK_USER_ID = 1;
 
 export function useChat() {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const { toast } = useToast();
 
@@ -24,9 +25,6 @@ export function useChat() {
       return data.messages as Message[];
     }
   });
-
-  // Local messages state management
-  const [messages, setMessages] = useState<Message[]>([]);
 
   // Update messages when data is fetched
   useEffect(() => {
