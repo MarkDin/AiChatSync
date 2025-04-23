@@ -1,16 +1,37 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { chatCompletionSchema } from "@shared/schema";
+import { chatCompletionSchema, insertMessageSchema } from "@shared/schema";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Get messages for a user
+  app.get("/api/messages", async (req, res) => {
+    try {
+      const userId = req.query.userId ? parseInt(req.query.userId as string, 10) : undefined;
+      const messages = await storage.getAllMessages(userId);
+      res.json({ messages });
+    } catch (error) {
+      console.error("Get messages error:", error);
+      res.status(500).json({ message: "Failed to retrieve messages" });
+    }
+  });
+
   // Chat completion API endpoint
   app.post("/api/chat", async (req, res) => {
     try {
       // Validate request body
-      const { message } = chatCompletionSchema.parse(req.body);
+      const { message, userId } = chatCompletionSchema.parse(req.body);
+      
+      // Store user message
+      if (userId) {
+        await storage.createMessage({
+          role: 'user',
+          content: message,
+          userId
+        });
+      }
       
       // In a real app, we would call the Supabase Edge Function here
       // For this demo, we'll return a simulated AI response
@@ -29,6 +50,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         aiResponse = "There are three main types of machine learning:\n\n1. **Supervised Learning**: The algorithm learns from labeled training data, making predictions or decisions based on that learning. Examples include classification and regression.\n\n2. **Unsupervised Learning**: The algorithm finds patterns and relationships in unlabeled data. Examples include clustering, association, and dimensionality reduction.\n\n3. **Reinforcement Learning**: The algorithm learns through trial and error, receiving rewards or penalties for actions it takes. It's commonly used in gaming, robotics, and navigation.\n\nThere's also semi-supervised learning (using both labeled and unlabeled data) and transfer learning (applying knowledge from one task to another).";
       } else {
         aiResponse = "I understand your message. In a production environment, this would connect to Supabase Edge Functions to generate a more specific and helpful response.";
+      }
+
+      // Store AI response
+      if (userId) {
+        await storage.createMessage({
+          role: 'assistant',
+          content: aiResponse,
+          userId
+        });
       }
 
       // Return the AI response
