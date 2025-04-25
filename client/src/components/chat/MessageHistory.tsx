@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Message } from "@shared/schema";
 import { MessageSquare, User } from "lucide-react";
 import LoadingDots from "@/components/ui/loading-dots";
+import ReactMarkdown from "react-markdown";
 
 interface MessageHistoryProps {
   messages: Message[];
@@ -37,11 +38,13 @@ export default function MessageHistory({ messages, isLoading }: MessageHistoryPr
           <div 
             className={`${
               message.role === 'user' 
-                ? 'mr-3 bg-accent dark:bg-dark-accent text-white' 
-                : 'ml-3 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
+                ? 'mr-3 bg-accent dark:bg-dark-accent text-white dark:text-white' 
+                : 'ml-3 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
             } rounded-lg p-4 max-w-[85%] shadow-sm`}
           >
-            <p className="whitespace-pre-wrap">{message.content}</p>
+            <div className="prose dark:prose-invert prose-sm max-w-none">
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+            </div>
           </div>
           
           {message.role === 'user' && (
@@ -58,7 +61,7 @@ export default function MessageHistory({ messages, isLoading }: MessageHistoryPr
           <div className="w-8 h-8 rounded-full bg-accent dark:bg-dark-accent flex items-center justify-center text-white flex-shrink-0">
             <MessageSquare className="w-5 h-5" />
           </div>
-          <div className="ml-3 bg-gray-100 dark:bg-gray-700 rounded-lg p-4 max-w-[85%] shadow-sm flex items-center">
+          <div className="ml-3 bg-gray-100 dark:bg-gray-800 rounded-lg p-4 max-w-[85%] shadow-sm flex items-center">
             <LoadingDots />
           </div>
         </div>
