@@ -1,7 +1,8 @@
+
 import OpenAI from "openai";
 
-// the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-const MODEL = "gpt-4o";
+// Using Deepseek's chat model
+const MODEL = "deepseek-chat";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -12,7 +13,10 @@ if (!process.env.OPENAI_API_KEY) {
   throw new Error("OPENAI_API_KEY environment variable is required");
 }
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ 
+  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: "https://api.deepseek.com/v1"  // Use Deepseek's API endpoint
+});
 
 export async function generateChatCompletion(
   messages: ChatMessage[],
@@ -27,7 +31,7 @@ export async function generateChatCompletion(
 
     return response.choices[0].message.content || "";
   } catch (error) {
-    console.error("Error calling OpenAI API:", error);
+    console.error("Error calling Deepseek API:", error);
     throw new Error("Failed to generate completion");
   }
 }
