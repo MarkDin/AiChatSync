@@ -57,7 +57,7 @@ export class MCPService {
       // Tavily搜索API服务器 (需要TAVILY_API_KEY)
       "tavily-mcp": {
         command: "npx",
-        args: ["-y", "tavily-mcp"],
+        args: ["tavily-mcp"],
         env: {
           TAVILY_API_KEY: process.env.TAVILY_API_KEY || ""
         },
@@ -151,6 +151,56 @@ export class MCPService {
       
       console.log(`Starting MCP server: ${serverName}`);
       
+      // 对于tavily-mcp，我们直接在这里手动定义工具，而不是尝试连接到子进程
+      if (serverName === "tavily-mcp") {
+        // 手动添加Tavily搜索工具
+        this.tools.push({
+          name: "tavily_search",
+          description: "使用Tavily搜索引擎搜索互联网上的最新信息",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "要搜索的查询字符串",
+              },
+              search_depth: {
+                type: "string",
+                enum: ["basic", "advanced"],
+                description: "搜索深度，基本或高级",
+                default: "basic"
+              },
+              include_domains: {
+                type: "array",
+                items: {
+                  type: "string"
+                },
+                description: "要包含的域名列表",
+                default: []
+              },
+              exclude_domains: {
+                type: "array",
+                items: {
+                  type: "string"
+                },
+                description: "要排除的域名列表",
+                default: []
+              },
+              max_results: {
+                type: "integer",
+                description: "最大返回结果数",
+                default: 5
+              }
+            },
+            required: ["query"],
+          }
+        });
+        
+        console.log("已添加Tavily搜索工具: tavily_search");
+        
+        return;
+      }
+      
       // 准备环境变量
       const env = { ...process.env, ...serverConfig.env };
       
@@ -158,6 +208,7 @@ export class MCPService {
       this.serverProcess = spawn(serverConfig.command, serverConfig.args, {
         env,
         stdio: ["pipe", "pipe", "pipe"],
+        shell: true
       });
       
       // 设置进程事件处理
@@ -178,11 +229,9 @@ export class MCPService {
         this.serverProcess = null;
       });
       
-      // 创建客户端传输
-      this.transport = new StdioClientTransport(this.serverProcess);
-      
-      // 连接到MCP服务器
-      await this.client.connect(this.transport);
+      // 由于与MCP SDK的StdioClientTransport连接存在问题，
+      // 我们暂时跳过此步骤，直接手动添加工具
+      console.log(`MCP工具服务器 ${serverName} 已启动，但由于SDK兼容性问题，我们不直接连接到它`);
       
       // 获取可用工具
       try {
@@ -265,16 +314,53 @@ export class MCPService {
             let result: any;
             
             // 检查是否是MCP工具
-            const isMcpTool = this.transport && 
-                            !(toolName === "get_weather" || toolName === "get_city_info");
+            const isMcpTool = !(toolName === "get_weather" || toolName === "get_city_info");
             
             if (isMcpTool) {
               try {
-                // 使用MCP协议调用工具
-                console.log(`Calling MCP tool: ${toolName} with args:`, toolArgs);
-                // 由于类型问题，使用any来绕过类型检查
-                const client = this.client as any;
-                result = await client.call(toolName, toolArgs);
+                // 处理Tavily搜索工具
+                if (toolName === "tavily_search") {
+                  console.log(`Calling Tavily search with query: "${toolArgs.query}"`);
+                  
+                  // 尝试使用fetch调用Tavily API
+                  try {
+                    const response = await fetch("https://api.tavily.com/search", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${process.env.TAVILY_API_KEY}`
+                      },
+                      body: JSON.stringify({
+                        query: toolArgs.query,
+                        search_depth: toolArgs.search_depth || "basic",
+                        include_domains: toolArgs.include_domains || [],
+                        exclude_domains: toolArgs.exclude_domains || [],
+                        max_results: toolArgs.max_results || 5
+                      })
+                    });
+                    
+                    if (!response.ok) {
+                      throw new Error(`Tavily API returned status ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    console.log("Tavily search results:", data);
+                    
+                    result = data;
+                  } catch (tavilyError) {
+                    console.error("Error calling Tavily API:", tavilyError);
+                    result = {
+                      error: `Tavily搜索出错: ${tavilyError instanceof Error ? tavilyError.message : String(tavilyError)}`
+                    };
+                  }
+                } else {
+                  // 其他MCP工具 (仅备用)
+                  console.log(`Calling MCP tool: ${toolName} with args:`, toolArgs);
+                  result = {
+                    message: `工具 "${toolName}" 暂不支持。请使用 tavily_search、get_weather 或 get_city_info。`
+                  };
+                }
+                
                 console.log(`MCP tool ${toolName} result:`, result);
               } catch (toolError) {
                 console.error(`Error calling MCP tool ${toolName}:`, toolError);
