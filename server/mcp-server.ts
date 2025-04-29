@@ -1,4 +1,4 @@
-import { Server, ServerTransport } from '@modelcontextprotocol/sdk/server/index.js';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 interface WeatherParams {
@@ -76,77 +76,104 @@ async function getCityInfo(params: { city: string }): Promise<string> {
 
 async function main() {
   // 创建和配置MCP服务器
-  const transport: ServerTransport = new StdioServerTransport();
+  const transport = new StdioServerTransport();
   const server = new Server({ 
     name: "weather-and-city-info-server", 
     version: "1.0.0" 
   });
   
-  // 注册工具
-  server.registerTool({
+  // 注册天气工具
+  server.onTool({
     name: "get_weather",
-    description: "获取指定地点的天气信息",
-    inputSchema: {
-      type: "object",
-      properties: {
-        location: {
-          type: "string",
-          description: "城市名称（如：北京，上海）"
-        },
-        date: {
-          type: "string",
-          description: "日期（可选，格式：YYYY-MM-DD）"
-        }
-      },
-      required: ["location"]
-    },
-    handler: async (params: unknown) => {
+    handler: async (request) => {
       try {
-        const result = await getWeather(params as WeatherParams);
+        const params = request.params as WeatherParams;
+        const result = await getWeather(params);
         return {
-          status: "success",
-          content: result
+          result: {
+            status: "success",
+            content: result
+          }
         };
       } catch (error) {
         return {
-          status: "error",
-          error: `获取天气信息失败: ${error instanceof Error ? error.message : String(error)}`
+          error: {
+            code: -32000,
+            message: `获取天气信息失败: ${error instanceof Error ? error.message : String(error)}`
+          }
         };
       }
     }
   });
   
-  server.registerTool({
+  // 注册城市信息工具
+  server.onTool({
     name: "get_city_info",
-    description: "获取城市的基本信息",
-    inputSchema: {
-      type: "object",
-      properties: {
-        city: {
-          type: "string",
-          description: "城市名称（如：北京，上海，广州）"
-        }
-      },
-      required: ["city"]
-    },
-    handler: async (params: unknown) => {
+    handler: async (request) => {
       try {
-        const result = await getCityInfo(params as { city: string });
+        const params = request.params as { city: string };
+        const result = await getCityInfo(params);
         return {
-          status: "success",
-          content: result
+          result: {
+            status: "success",
+            content: result
+          }
         };
       } catch (error) {
         return {
-          status: "error",
-          error: `获取城市信息失败: ${error instanceof Error ? error.message : String(error)}`
+          error: {
+            code: -32000,
+            message: `获取城市信息失败: ${error instanceof Error ? error.message : String(error)}`
+          }
         };
       }
     }
+  });
+  
+  // 提供工具目录服务
+  server.onListTools(async (request) => {
+    return {
+      result: {
+        tools: [
+          {
+            name: "get_weather",
+            description: "获取指定地点的天气信息",
+            inputSchema: {
+              type: "object",
+              properties: {
+                location: {
+                  type: "string",
+                  description: "城市名称（如：北京，上海）"
+                },
+                date: {
+                  type: "string",
+                  description: "日期（可选，格式：YYYY-MM-DD）"
+                }
+              },
+              required: ["location"]
+            }
+          },
+          {
+            name: "get_city_info",
+            description: "获取城市的基本信息",
+            inputSchema: {
+              type: "object",
+              properties: {
+                city: {
+                  type: "string",
+                  description: "城市名称（如：北京，上海，广州）"
+                }
+              },
+              required: ["city"]
+            }
+          }
+        ]
+      }
+    };
   });
   
   // 启动服务器
-  server.serve(transport);
+  await server.start(transport);
   console.log("MCP Server started and ready to handle requests");
 }
 

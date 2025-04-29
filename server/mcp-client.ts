@@ -1,5 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { spawn } from 'child_process';
 import path from 'path';
 import OpenAI from 'openai';
@@ -52,8 +53,8 @@ export class MCPService {
       const toolsResult = await this.client.listTools();
       this.tools = toolsResult.tools.map(tool => ({
         name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema,
+        description: tool.description || "无描述",  // 确保description不为undefined
+        inputSchema: tool.inputSchema
       }));
       
       this.isConnected = true;
