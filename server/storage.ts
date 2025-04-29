@@ -83,9 +83,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createConversation(conversation: InsertConversation): Promise<Conversation> {
+    // 如果enabledTools存在但不是数组类型，转换为数组
+    const enabledTools = conversation.enabledTools 
+      ? Array.isArray(conversation.enabledTools) 
+        ? conversation.enabledTools 
+        : [] 
+      : [];
+    
     const [newConversation] = await db
       .insert(conversations)
-      .values(conversation)
+      .values({
+        ...conversation,
+        enabledTools: enabledTools
+      })
       .returning();
     return newConversation;
   }

@@ -453,7 +453,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           title: message.substring(0, 50) + (message.length > 50 ? "..." : ""),
           userId: userIdToUse,
           systemPromptId: defaultPrompt?.id,
-          enabledTools: [] // No tools by default
+          enabledTools: [] as number[] // No tools by default
         });
         conversationIdToUse = newConversation.id;
       }
@@ -532,71 +532,87 @@ When you want to use a tool, respond with the [USE_TOOL] syntax mentioned above.
       // Format messages for OpenAI
       const formattedMessages = formatMessagesForOpenAI(conversationMessages, systemPromptContent);
       
-      // Generate AI response
-      const aiResponse = await generateChatCompletion(formattedMessages);
+      let finalResponse = '';
+      let toolCalls: { name: string; arguments: Record<string, any>; result: any }[] = [];
       
-      // Check if the response includes a tool call
-      const toolCallMatch = aiResponse.match(/\[USE_TOOL:(\d+):(.+?)\]/);
-      let finalResponse = aiResponse;
-      
-      if (toolCallMatch && useTool) {
-        const toolId = parseInt(toolCallMatch[1], 10);
-        let parameters: any;
-        
+      // 检查是否启用了MCP工具
+      if (useTool && availableTools.length > 0) {
         try {
-          // Try to parse the parameters as JSON
-          parameters = JSON.parse(toolCallMatch[2]);
-        } catch (e) {
-          // If parsing fails, use as is
-          parameters = toolCallMatch[2];
-        }
-        
-        // Get the tool
-        const tool = await storage.getMcpTool(toolId);
-        if (tool && tool.isEnabled) {
-          // Store the AI response with the tool call
-          await storage.createMessage({
-            role: 'assistant',
-            content: aiResponse,
-            userId: userIdToUse,
-            conversationId: conversationIdToUse,
-            toolCall: { toolId, parameters }
-          });
+          // 确保MCP服务初始化
+          if (!mcpService.getAvailableTools().length) {
+            await mcpService.initialize();
+          }
           
-          // Execute the tool (in a real app, this would call the actual tool)
-          const toolResult = {
-            success: true,
-            data: {
-              message: `Tool "${tool.name}" executed successfully with parameters: ${JSON.stringify(parameters)}`,
-              timestamp: new Date().toISOString()
+          // 使用MCP客户端处理消息
+          const mcpResponse = await mcpService.processWithTools(message);
+          finalResponse = mcpResponse.content;
+          toolCalls = mcpResponse.toolCalls;
+          
+          // 如果有工具调用，添加一个带有工具调用信息的消息
+          if (toolCalls.length > 0) {
+            // 找到工具ID
+            let toolId = undefined;
+            const conversation = await storage.getConversation(conversationIdToUse);
+            if (conversation && conversation.enabledTools && Array.isArray(conversation.enabledTools)) {
+              const enabledTools = await Promise.all((conversation.enabledTools as number[]).map(id => storage.getMcpTool(id)));
+              const matchingTool = enabledTools.find(tool => 
+                tool && toolCalls[0] && tool.name.toLowerCase().includes(toolCalls[0].name.toLowerCase()));
+              
+              if (matchingTool) {
+                toolId = matchingTool.id;
+              }
             }
-          };
-          
-          // Store the tool result
-          await storage.createMessage({
-            role: 'tool',
-            content: `Tool "${tool.name}" returned: ${JSON.stringify(toolResult.data)}`,
-            userId: userIdToUse,
-            conversationId: conversationIdToUse,
-            toolCall: { toolId, parameters },
-            toolResult
-          });
-          
-          // Return both the AI response and the tool result
-          return res.json({
-            content: aiResponse,
-            conversationId: conversationIdToUse,
-            toolCall: {
-              toolId,
-              toolName: tool.name,
-              parameters
-            },
-            toolResult
-          });
+            
+            // 存储助手消息，包含工具调用
+            await storage.createMessage({
+              role: 'assistant',
+              content: finalResponse,
+              userId: userIdToUse,
+              conversationId: conversationIdToUse,
+              toolCall: {
+                toolId,
+                name: toolCalls[0].name,
+                parameters: toolCalls[0].arguments
+              }
+            });
+            
+            // 存储工具结果消息
+            await storage.createMessage({
+              role: 'tool',
+              content: `工具 "${toolCalls[0].name}" 返回: ${JSON.stringify(toolCalls[0].result)}`,
+              userId: userIdToUse,
+              conversationId: conversationIdToUse,
+              toolCall: {
+                toolId,
+                name: toolCalls[0].name,
+                parameters: toolCalls[0].arguments
+              },
+              toolResult: toolCalls[0].result
+            });
+            
+            // 返回包含工具调用信息的响应
+            return res.json({
+              content: finalResponse,
+              conversationId: conversationIdToUse,
+              toolCall: {
+                toolId,
+                toolName: toolCalls[0].name,
+                parameters: toolCalls[0].arguments
+              },
+              toolResult: toolCalls[0].result
+            });
+          }
+        } catch (error) {
+          console.error("Error processing with MCP tools:", error);
+          // 如果MCP处理失败，回退到常规方式
+          finalResponse = await generateChatCompletion(formattedMessages);
         }
+      } else {
+        // 如果没有启用工具或没有可用工具，使用常规聊天完成
+        finalResponse = await generateChatCompletion(formattedMessages);
       }
       
-      // No tool call or invalid tool call, just store the AI response
+      // 常规消息处理（无工具调用）
       await storage.createMessage({
         role: 'assistant',
         content: finalResponse,
@@ -604,7 +620,7 @@ When you want to use a tool, respond with the [USE_TOOL] syntax mentioned above.
         conversationId: conversationIdToUse
       });
 
-      // Return the response
+      // 返回响应
       res.json({ 
         content: finalResponse,
         conversationId: conversationIdToUse,
