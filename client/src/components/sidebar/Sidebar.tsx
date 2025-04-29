@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MessageSquare, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MessageSquare, Settings, ChevronLeft, ChevronRight, WrenchIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConversationList from './ConversationList';
 import SystemPrompts from './SystemPrompts';
+import McpToolsManager from './McpToolsManager';
 import ThemeToggle from '@/components/ui/theme-toggle';
 
 interface SidebarProps {
@@ -61,6 +62,15 @@ export default function Sidebar({
           >
             <Settings className="h-5 w-5" />
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="mb-4"
+            onClick={() => setIsCollapsed(false)}
+            title="MCP工具"
+          >
+            <WrenchIcon className="h-5 w-5" />
+          </Button>
           <div className="mt-auto">
             <ThemeToggle />
           </div>
@@ -69,14 +79,18 @@ export default function Sidebar({
         // 展开状态
         <div className="flex flex-col h-full p-4">
           <Tabs defaultValue="conversations" className="flex-1">
-            <TabsList className="grid w-full grid-cols-2 mb-4">
+            <TabsList className="grid w-full grid-cols-3 mb-4">
               <TabsTrigger value="conversations">
                 <MessageSquare className="h-4 w-4 mr-2" />
                 对话
               </TabsTrigger>
               <TabsTrigger value="system-prompts">
                 <Settings className="h-4 w-4 mr-2" />
-                系统提示
+                提示
+              </TabsTrigger>
+              <TabsTrigger value="mcp-tools">
+                <WrenchIcon className="h-4 w-4 mr-2" />
+                工具
               </TabsTrigger>
             </TabsList>
             <TabsContent value="conversations" className="overflow-y-auto h-[calc(100vh-160px)]">
@@ -88,6 +102,9 @@ export default function Sidebar({
             </TabsContent>
             <TabsContent value="system-prompts" className="overflow-y-auto h-[calc(100vh-160px)]">
               <SystemPrompts />
+            </TabsContent>
+            <TabsContent value="mcp-tools" className="overflow-y-auto h-[calc(100vh-160px)]">
+              <McpToolsManager />
             </TabsContent>
           </Tabs>
           <div className="mt-auto pt-2 flex justify-between items-center border-t">

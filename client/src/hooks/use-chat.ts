@@ -11,9 +11,10 @@ const MOCK_USER_ID = 1;
 interface UseChatOptions {
   conversationId?: number;
   systemPromptId?: number;
+  useMcpTools?: boolean;
 }
 
-export function useChat({ conversationId, systemPromptId }: UseChatOptions = {}) {
+export function useChat({ conversationId, systemPromptId, useMcpTools = false }: UseChatOptions = {}) {
   const [activeConversationId, setActiveConversationId] = useState<number | undefined>(conversationId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -152,7 +153,8 @@ export function useChat({ conversationId, systemPromptId }: UseChatOptions = {})
         message: content,
         conversationId: activeConversationId,
         systemPromptId,
-        userId: MOCK_USER_ID
+        userId: MOCK_USER_ID,
+        useTool: useMcpTools
       });
 
       // Send request to API

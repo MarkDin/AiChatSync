@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import MessageHistory from "./MessageHistory";
 import MessageInput from "./MessageInput";
+import McpToolSelector from "./McpToolSelector";
 import { useChat } from "@/hooks/use-chat";
 import Sidebar from "@/components/sidebar/Sidebar";
 
@@ -14,6 +15,7 @@ export default function ChatContainer({
   initialSystemPromptId
 }: ChatContainerProps) {
   const [selectedSystemPromptId, setSelectedSystemPromptId] = useState<number | undefined>(initialSystemPromptId);
+  const [useMcpTools, setUseMcpTools] = useState(false);
   
   const {
     messages,
@@ -27,7 +29,8 @@ export default function ChatContainer({
     startNewConversation
   } = useChat({
     conversationId: initialConversationId,
-    systemPromptId: selectedSystemPromptId
+    systemPromptId: selectedSystemPromptId,
+    useMcpTools
   });
 
   // 获取当前会话的标题
@@ -54,6 +57,15 @@ export default function ChatContainer({
           messages={messages} 
           isLoading={isLoading} 
         />
+        
+        <div className="px-4">
+          {activeConversationId && (
+            <McpToolSelector
+              conversationId={activeConversationId}
+              onToolsEnabled={setUseMcpTools}
+            />
+          )}
+        </div>
         
         <MessageInput 
           value={inputValue} 
