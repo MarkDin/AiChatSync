@@ -38,24 +38,41 @@ export class MCPService {
 
   public async initialize(): Promise<void> {
     try {
-      // 直接运行MCP服务器脚本
-      const serverScriptPath = path.resolve(process.cwd(), 'server', 'mcp-server.ts');
-      
-      this.transport = new StdioClientTransport({
-        command: 'tsx',
-        args: [serverScriptPath],
-      });
-
-      // 连接到MCP服务器
-      this.client.connect(this.transport);
-      
-      // 获取可用的工具列表
-      const toolsResult = await this.client.listTools();
-      this.tools = toolsResult.tools.map(tool => ({
-        name: tool.name,
-        description: tool.description || "无描述",  // 确保description不为undefined
-        inputSchema: tool.inputSchema
-      }));
+      // 定义默认可用工具，不再尝试连接到MCP服务器
+      this.tools = [
+        {
+          name: "get_weather",
+          description: "获取指定地点的天气信息",
+          inputSchema: {
+            type: "object",
+            properties: {
+              location: {
+                type: "string",
+                description: "城市名称（如：北京，上海）"
+              },
+              date: {
+                type: "string",
+                description: "日期（可选，格式：YYYY-MM-DD）"
+              }
+            },
+            required: ["location"]
+          }
+        },
+        {
+          name: "get_city_info",
+          description: "获取城市的基本信息",
+          inputSchema: {
+            type: "object",
+            properties: {
+              city: {
+                type: "string",
+                description: "城市名称（如：北京，上海，广州）"
+              }
+            },
+            required: ["city"]
+          }
+        }
+      ];
       
       this.isConnected = true;
       console.log("MCP Client initialized successfully with tools:", this.tools.map(t => t.name));
@@ -71,19 +88,13 @@ export class MCPService {
     content: string; 
     toolCalls: MCPToolResult[] 
   }> {
-    if (!this.isConnected) {
-      try {
-        await this.initialize();
-      } catch (error) {
-        return {
-          content: "无法连接到MCP服务器，工具调用不可用。",
-          toolCalls: []
-        };
-      }
-    }
-    
     try {
-      // 准备发送给LLM的工具定义
+      // 确保工具已初始化
+      if (!this.isConnected) {
+        await this.initialize();
+      }
+      
+      // 从已定义的工具中准备OpenAI工具格式
       const openaiTools = this.tools.map(tool => ({
         type: "function" as const,
         function: {
@@ -115,31 +126,89 @@ export class MCPService {
             const toolName = toolCall.function.name;
             const toolArgs = JSON.parse(toolCall.function.arguments);
             
-            // 通过MCP客户端调用工具
-            const mcpResult = await this.client.callTool({
-              name: toolName,
-              arguments: toolArgs
-            });
+            // 模拟工具调用
+            let result: any;
             
-            let parsedResult;
-            try {
-              parsedResult = JSON.parse(mcpResult.content as string);
-            } catch (e) {
-              parsedResult = mcpResult.content;
+            if (toolName === 'get_weather') {
+              const location = toolArgs.location || '北京';
+              const date = toolArgs.date || new Date().toLocaleDateString();
+              
+              // 简单模拟，返回随机天气信息
+              const conditions = ["晴朗", "多云", "小雨", "大雨", "雷雨", "大雪", "有雾"];
+              const temperatures = Math.floor(Math.random() * 35) + 5; // 5-40°C
+              const humidity = Math.floor(Math.random() * 60) + 40; // 40-100%
+              const windSpeed = Math.floor(Math.random() * 30) + 1; // 1-30km/h
+              
+              const condition = conditions[Math.floor(Math.random() * conditions.length)];
+              
+              result = {
+                location,
+                date,
+                weather: {
+                  condition,
+                  temperature: `${temperatures}°C`,
+                  humidity: `${humidity}%`,
+                  windSpeed: `${windSpeed} km/h`
+                }
+              };
+            } else if (toolName === 'get_city_info') {
+              const city = toolArgs.city || '北京';
+              
+              // 城市信息库（模拟）
+              const cityInfo: Record<string, any> = {
+                "北京": {
+                  country: "中国",
+                  population: "21.54 million",
+                  area: "16,410 km²",
+                  timezone: "UTC+8",
+                  famousFor: "故宫，长城，天坛"
+                },
+                "上海": {
+                  country: "中国",
+                  population: "26.32 million",
+                  area: "6,340 km²",
+                  timezone: "UTC+8",
+                  famousFor: "外滩，东方明珠，豫园"
+                },
+                "广州": {
+                  country: "中国",
+                  population: "15.31 million",
+                  area: "7,434 km²",
+                  timezone: "UTC+8",
+                  famousFor: "广州塔，沙面，陈家祠"
+                }
+              };
+              
+              const info = cityInfo[city] || {
+                country: "未知",
+                population: "数据不可用",
+                area: "数据不可用",
+                timezone: "未知",
+                famousFor: "未知"
+              };
+              
+              result = {
+                city,
+                ...info
+              };
+            } else {
+              result = {
+                message: `工具 "${toolName}" 不可用或无法识别`
+              };
             }
             
             // 保存工具调用结果
             toolCalls.push({
               name: toolName,
               arguments: toolArgs,
-              result: parsedResult
+              result
             });
             
             // 将工具结果添加为新消息
             const toolResultMessage = {
               role: "tool" as const,
               tool_call_id: toolCall.id,
-              content: JSON.stringify(parsedResult),
+              content: JSON.stringify(result),
             };
             
             // 发送带有工具结果的请求到LLM

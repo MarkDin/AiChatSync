@@ -12,9 +12,17 @@ interface MessageHistoryProps {
   isLoading: boolean;
 }
 
+// 工具调用类型
+interface ToolCallType {
+  toolId?: number;
+  name?: string;
+  parameters?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+}
+
 // 工具调用组件
-function ToolCall({ toolCall }: { toolCall: any }) {
-  const [mcpTool, setMcpTool] = useState<any>(null);
+function ToolCall({ toolCall }: { toolCall: ToolCallType }) {
+  const [mcpTool, setMcpTool] = useState<{id: number, name: string, description: string} | null>(null);
   
   // 获取工具信息
   const { data: tool } = useQuery({
