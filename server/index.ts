@@ -38,8 +38,19 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // 暂时注释掉MCP服务初始化，以避免启动问题
-  console.log("MCP service initialization skipped");
+  try {
+    // 尝试初始化MCP服务
+    if (process.env.TAVILY_API_KEY) {
+      console.log("TAVILY_API_KEY detected, initializing MCP service with Tavily Search...");
+      await mcpService.initialize();
+    } else {
+      console.log("No TAVILY_API_KEY found, initializing MCP service with default tools only");
+      await mcpService.initialize();
+    }
+  } catch (error) {
+    console.error("Failed to initialize MCP service:", error);
+    console.log("Continuing with default tools only");
+  }
 
   const server = await registerRoutes(app);
 
