@@ -109,7 +109,7 @@ export class MCPService {
 
       // 发送请求到LLM
       const response = await openai.chat.completions.create({
-        model: "gpt-4o", // 使用最新的GPT模型
+        model: "deepseek-chat",
         messages: [
           {
             role: "system",
@@ -232,7 +232,7 @@ export class MCPService {
 
             // 发送带有工具结果的请求到LLM
             const finalResponse = await openai.chat.completions.create({
-              model: "gpt-4o",
+              model: "deepseek-chat",
               messages: [
                 {
                   role: "system",
