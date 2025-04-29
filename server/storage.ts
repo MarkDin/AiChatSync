@@ -2,7 +2,8 @@ import {
   users, type User, type InsertUser,
   messages, type Message, type InsertMessage,
   conversations, type Conversation, type InsertConversation,
-  systemPrompts, type SystemPrompt, type InsertSystemPrompt
+  systemPrompts, type SystemPrompt, type InsertSystemPrompt,
+  mcpTools, type McpTool, type InsertMcpTool
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, isNull } from "drizzle-orm";
@@ -18,6 +19,7 @@ export interface IStorage {
   getUserConversations(userId: number): Promise<Conversation[]>;
   createConversation(conversation: InsertConversation): Promise<Conversation>;
   updateConversationTitle(id: number, title: string): Promise<Conversation>;
+  updateConversationTools(id: number, enabledTools: number[]): Promise<Conversation>;
   deleteConversation(id: number): Promise<void>;
   
   // Message methods
@@ -32,6 +34,15 @@ export interface IStorage {
   updateSystemPrompt(id: number, prompt: Partial<InsertSystemPrompt>): Promise<SystemPrompt>;
   deleteSystemPrompt(id: number): Promise<void>;
   setDefaultSystemPrompt(id: number, userId: number): Promise<SystemPrompt>;
+  
+  // MCP Tool methods
+  getMcpTool(id: number): Promise<McpTool | undefined>;
+  getUserMcpTools(userId: number): Promise<McpTool[]>;
+  getEnabledMcpTools(userId: number): Promise<McpTool[]>;
+  createMcpTool(tool: InsertMcpTool): Promise<McpTool>;
+  updateMcpTool(id: number, tool: Partial<InsertMcpTool>): Promise<McpTool>;
+  deleteMcpTool(id: number): Promise<void>;
+  toggleMcpToolStatus(id: number, isEnabled: boolean): Promise<McpTool>;
 }
 
 export class DatabaseStorage implements IStorage {
