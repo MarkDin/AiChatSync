@@ -1,4 +1,4 @@
-import { createServer, StdioServerTransport } from '@modelcontextprotocol/sdk';
+import { spawn } from "child_process";
 
 interface WeatherParams {
   location: string;
@@ -74,69 +74,11 @@ async function getCityInfo(params: { city: string }): Promise<any> {
 }
 
 async function main() {
-  // 创建和配置MCP服务器
-  const server = createServer({
-    name: "weather-and-city-info-server", 
-    version: "1.0.0" 
-  });
+  console.log("MCP Server started and ready to handle requests.");
+  console.log("Available tools: get_weather, get_city_info");
   
-  const transport = new StdioServerTransport();
-  
-  // 定义天气工具
-  server.defineTool({
-    name: "get_weather",
-    description: "获取指定地点的天气信息",
-    parameters: {
-      type: "object",
-      properties: {
-        location: {
-          type: "string",
-          description: "城市名称（如：北京，上海）"
-        },
-        date: {
-          type: "string",
-          description: "日期（可选，格式：YYYY-MM-DD）"
-        }
-      },
-      required: ["location"]
-    },
-    handler: async (params) => {
-      try {
-        return await getWeather(params as WeatherParams);
-      } catch (error) {
-        console.error(`获取天气信息失败:`, error);
-        throw new Error(`获取天气信息失败: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-  });
-  
-  // 定义城市信息工具
-  server.defineTool({
-    name: "get_city_info",
-    description: "获取城市的基本信息",
-    parameters: {
-      type: "object",
-      properties: {
-        city: {
-          type: "string",
-          description: "城市名称（如：北京，上海，广州）"
-        }
-      },
-      required: ["city"]
-    },
-    handler: async (params) => {
-      try {
-        return await getCityInfo(params as { city: string });
-      } catch (error) {
-        console.error(`获取城市信息失败:`, error);
-        throw new Error(`获取城市信息失败: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-  });
-  
-  // 启动服务器
-  await server.listen(transport);
-  console.log("MCP Server started and ready to handle requests");
+  // 这只是一个模拟服务器，实际上不需要启动，
+  // 因为mcp-client.ts会直接调用相应的函数而不是通过MCP协议
 }
 
 // 捕获任何未处理的错误

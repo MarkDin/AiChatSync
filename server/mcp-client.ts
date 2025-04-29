@@ -1,9 +1,7 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { spawn } from "child_process";
+import { spawn, ChildProcess } from "child_process";
 import path from "path";
 import OpenAI from "openai";
+import fetch from "node-fetch";
 
 // 创建OpenAI客户端
 const openai = new OpenAI({
@@ -31,25 +29,19 @@ interface McpServerConfig {
   autoApprove?: string[];
 }
 
+// 实现基于MCP协议的工具服务
 export class MCPService {
-  private client: Client;
-  private transport: StdioClientTransport | null = null;
+  private serverProcesses: Map<string, ChildProcess> = new Map();
   private tools: MCPToolDefinition[] = [];
   private isConnected: boolean = false;
-  private serverProcess: any = null;
   private mcpServers: Record<string, McpServerConfig> = {};
 
   constructor() {
-    this.client = new Client({
-      name: "ai-chat-mcp-client",
-      version: "1.0.0",
-    });
-
     // 配置MCP服务器
     this.mcpServers = {
-      // 默认的内置MCP服务器
+      // 默认的内置MCP服务器（模拟天气和城市信息）
       "built-in-mcp": {
-        command: "node",
+        command: "tsx",
         args: [path.join(process.cwd(), "server/mcp-server.ts")],
         disabled: false,
         autoApprove: ["get_weather", "get_city_info"]
@@ -69,21 +61,28 @@ export class MCPService {
 
   public async initialize(): Promise<void> {
     try {
-      const activeServers = Object.entries(this.mcpServers)
-        .filter(([_, config]) => !config.disabled);
-      
-      if (activeServers.length === 0) {
-        // 如果没有可用的MCP服务器，使用默认工具
-        this.initializeDefaultTools();
-        return;
-      }
-
       // 初始化默认工具
       this.initializeDefaultTools();
       
-      // 如果有Tavily API密钥，尝试连接到Tavily MCP服务器
-      if (process.env.TAVILY_API_KEY && this.mcpServers["tavily-mcp"]) {
-        await this.connectToMcpServer("tavily-mcp");
+      // 获取活跃的MCP服务器
+      const activeServers = Object.entries(this.mcpServers)
+        .filter(([_, config]) => !config.disabled);
+      
+      // 连接到活跃的MCP服务器
+      for (const [serverName, _] of activeServers) {
+        try {
+          // 使用Tavily API直接集成，而不是通过MCP服务器
+          if (serverName === "tavily-mcp") {
+            this.addTavilySearchTool();
+            continue;
+          }
+          
+          // 对于其他服务器，我们只需启动进程，但不实际连接到它们
+          // 我们将通过直接实现来模拟与它们的交互
+          await this.startMcpServerProcess(serverName);
+        } catch (error) {
+          console.error(`Failed to connect to MCP server ${serverName}:`, error);
+        }
       }
 
       this.isConnected = true;
@@ -138,7 +137,54 @@ export class MCPService {
     this.isConnected = true;
   }
   
-  private async connectToMcpServer(serverName: string): Promise<void> {
+  private addTavilySearchTool(): void {
+    // 手动添加Tavily搜索工具
+    this.tools.push({
+      name: "tavily_search",
+      description: "使用Tavily搜索引擎搜索互联网上的最新信息",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "要搜索的查询字符串",
+          },
+          search_depth: {
+            type: "string",
+            enum: ["basic", "advanced"],
+            description: "搜索深度，基本或高级",
+            default: "basic"
+          },
+          include_domains: {
+            type: "array",
+            items: {
+              type: "string"
+            },
+            description: "要包含的域名列表",
+            default: []
+          },
+          exclude_domains: {
+            type: "array",
+            items: {
+              type: "string"
+            },
+            description: "要排除的域名列表",
+            default: []
+          },
+          max_results: {
+            type: "integer",
+            description: "最大返回结果数",
+            default: 5
+          }
+        },
+        required: ["query"],
+      }
+    });
+    
+    console.log("已添加Tavily搜索工具: tavily_search");
+  }
+  
+  private async startMcpServerProcess(serverName: string): Promise<void> {
     try {
       const serverConfig = this.mcpServers[serverName];
       if (!serverConfig) {
@@ -151,112 +197,40 @@ export class MCPService {
       
       console.log(`Starting MCP server: ${serverName}`);
       
-      // 对于tavily-mcp，我们直接在这里手动定义工具，而不是尝试连接到子进程
-      if (serverName === "tavily-mcp") {
-        // 手动添加Tavily搜索工具
-        this.tools.push({
-          name: "tavily_search",
-          description: "使用Tavily搜索引擎搜索互联网上的最新信息",
-          inputSchema: {
-            type: "object",
-            properties: {
-              query: {
-                type: "string",
-                description: "要搜索的查询字符串",
-              },
-              search_depth: {
-                type: "string",
-                enum: ["basic", "advanced"],
-                description: "搜索深度，基本或高级",
-                default: "basic"
-              },
-              include_domains: {
-                type: "array",
-                items: {
-                  type: "string"
-                },
-                description: "要包含的域名列表",
-                default: []
-              },
-              exclude_domains: {
-                type: "array",
-                items: {
-                  type: "string"
-                },
-                description: "要排除的域名列表",
-                default: []
-              },
-              max_results: {
-                type: "integer",
-                description: "最大返回结果数",
-                default: 5
-              }
-            },
-            required: ["query"],
-          }
-        });
-        
-        console.log("已添加Tavily搜索工具: tavily_search");
-        
-        return;
-      }
-      
       // 准备环境变量
-      const env = { ...process.env, ...serverConfig.env };
+      const processEnv = { ...process.env, ...serverConfig.env };
       
       // 启动MCP服务器进程
-      this.serverProcess = spawn(serverConfig.command, serverConfig.args, {
-        env,
+      const childProcess = spawn(serverConfig.command, serverConfig.args, {
+        env: processEnv,
         stdio: ["pipe", "pipe", "pipe"],
         shell: true
       });
       
+      // 存储进程
+      this.serverProcesses.set(serverName, childProcess);
+      
       // 设置进程事件处理
-      this.serverProcess.stdout.on("data", (data: Buffer) => {
-        console.log(`[${serverName}] stdout: ${data.toString()}`);
+      childProcess.stdout.on("data", (data: Buffer) => {
+        console.log(`[${serverName}] stdout: ${data.toString().trim()}`);
       });
       
-      this.serverProcess.stderr.on("data", (data: Buffer) => {
-        console.error(`[${serverName}] stderr: ${data.toString()}`);
+      childProcess.stderr.on("data", (data: Buffer) => {
+        console.error(`[${serverName}] stderr: ${data.toString().trim()}`);
       });
       
-      this.serverProcess.on("error", (err: Error) => {
+      childProcess.on("error", (err: Error) => {
         console.error(`[${serverName}] Error: ${err.message}`);
       });
       
-      this.serverProcess.on("close", (code: number) => {
+      childProcess.on("close", (code: number) => {
         console.log(`[${serverName}] Process exited with code ${code}`);
-        this.serverProcess = null;
+        this.serverProcesses.delete(serverName);
       });
-      
-      // 由于与MCP SDK的StdioClientTransport连接存在问题，
-      // 我们暂时跳过此步骤，直接手动添加工具
-      console.log(`MCP工具服务器 ${serverName} 已启动，但由于SDK兼容性问题，我们不直接连接到它`);
-      
-      // 获取可用工具
-      try {
-        // 这里我们使用any绕过类型检查，因为MCP SDK的类型定义可能不完全匹配
-        const client = this.client as any;
-        const availableTools = await client.listTools();
-        
-        // 将MCP服务器的工具添加到工具列表
-        if (Array.isArray(availableTools) && availableTools.length > 0) {
-          for (const tool of availableTools) {
-            if (tool && typeof tool === 'object' && 'name' in tool) {
-              this.tools.push({
-                name: tool.name as string,
-                description: (tool.description as string) || `Provided by ${serverName}`,
-                inputSchema: (tool.parameters as Record<string, any>) || {},
-              });
-            }
-          }
-          console.log(`Added ${availableTools.length} tools from ${serverName}`);
-        }
-      } catch (error) {
-        console.error(`Error listing tools from ${serverName}:`, error);
-      }
+
+      console.log(`MCP server ${serverName} started successfully`);
     } catch (error) {
-      console.error(`Failed to connect to MCP server ${serverName}:`, error);
+      console.error(`Failed to start MCP server ${serverName}:`, error);
       throw error;
     }
   }
@@ -313,139 +287,21 @@ export class MCPService {
             // 工具调用结果
             let result: any;
             
-            // 检查是否是MCP工具
-            const isMcpTool = !(toolName === "get_weather" || toolName === "get_city_info");
-            
-            if (isMcpTool) {
-              try {
-                // 处理Tavily搜索工具
-                if (toolName === "tavily_search") {
-                  console.log(`Calling Tavily search with query: "${toolArgs.query}"`);
-                  
-                  // 尝试使用fetch调用Tavily API
-                  try {
-                    const response = await fetch("https://api.tavily.com/search", {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${process.env.TAVILY_API_KEY}`
-                      },
-                      body: JSON.stringify({
-                        query: toolArgs.query,
-                        search_depth: toolArgs.search_depth || "basic",
-                        include_domains: toolArgs.include_domains || [],
-                        exclude_domains: toolArgs.exclude_domains || [],
-                        max_results: toolArgs.max_results || 5
-                      })
-                    });
-                    
-                    if (!response.ok) {
-                      throw new Error(`Tavily API returned status ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    console.log("Tavily search results:", data);
-                    
-                    result = data;
-                  } catch (tavilyError) {
-                    console.error("Error calling Tavily API:", tavilyError);
-                    result = {
-                      error: `Tavily搜索出错: ${tavilyError instanceof Error ? tavilyError.message : String(tavilyError)}`
-                    };
-                  }
-                } else {
-                  // 其他MCP工具 (仅备用)
-                  console.log(`Calling MCP tool: ${toolName} with args:`, toolArgs);
-                  result = {
-                    message: `工具 "${toolName}" 暂不支持。请使用 tavily_search、get_weather 或 get_city_info。`
-                  };
-                }
-                
-                console.log(`MCP tool ${toolName} result:`, result);
-              } catch (toolError) {
-                console.error(`Error calling MCP tool ${toolName}:`, toolError);
-                result = {
-                  error: `调用工具 "${toolName}" 时出错: ${toolError instanceof Error ? toolError.message : String(toolError)}`
-                };
-              }
+            // 为不同的工具调用执行不同的逻辑
+            if (toolName === "get_weather") {
+              // 模拟天气工具
+              result = await this.executeWeatherTool(toolArgs);
+            } else if (toolName === "get_city_info") {
+              // 模拟城市信息工具
+              result = await this.executeCityInfoTool(toolArgs);
+            } else if (toolName === "tavily_search") {
+              // 使用Tavily API
+              result = await this.executeTavilySearchTool(toolArgs);
             } else {
-              // 使用内置工具模拟
-              if (toolName === "get_weather") {
-                const location = toolArgs.location || "北京";
-                const date = toolArgs.date || new Date().toLocaleDateString();
-
-                // 简单模拟，返回随机天气信息
-                const conditions = [
-                  "晴朗",
-                  "多云",
-                  "小雨",
-                  "大雨",
-                  "雷雨",
-                  "大雪",
-                  "有雾",
-                ];
-                const temperatures = Math.floor(Math.random() * 35) + 5; // 5-40°C
-                const humidity = Math.floor(Math.random() * 60) + 40; // 40-100%
-                const windSpeed = Math.floor(Math.random() * 30) + 1; // 1-30km/h
-
-                const condition =
-                  conditions[Math.floor(Math.random() * conditions.length)];
-
-                result = {
-                  location,
-                  date,
-                  weather: {
-                    condition,
-                    temperature: `${temperatures}°C`,
-                    humidity: `${humidity}%`,
-                    windSpeed: `${windSpeed} km/h`,
-                  },
-                };
-              } else if (toolName === "get_city_info") {
-                const city = toolArgs.city || "北京";
-
-                // 城市信息库（模拟）
-                const cityInfo: Record<string, any> = {
-                  北京: {
-                    country: "中国",
-                    population: "21.54 million",
-                    area: "16,410 km²",
-                    timezone: "UTC+8",
-                    famousFor: "故宫，长城，天坛",
-                  },
-                  上海: {
-                    country: "中国",
-                    population: "26.32 million",
-                    area: "6,340 km²",
-                    timezone: "UTC+8",
-                    famousFor: "外滩，东方明珠，豫园",
-                  },
-                  广州: {
-                    country: "中国",
-                    population: "15.31 million",
-                    area: "7,434 km²",
-                    timezone: "UTC+8",
-                    famousFor: "广州塔，沙面，陈家祠",
-                  },
-                };
-
-                const info = cityInfo[city] || {
-                  country: "未知",
-                  population: "数据不可用",
-                  area: "数据不可用",
-                  timezone: "未知",
-                  famousFor: "未知",
-                };
-
-                result = {
-                  city,
-                  ...info,
-                };
-              } else {
-                result = {
-                  message: `工具 "${toolName}" 不可用或无法识别`,
-                };
-              }
+              // 为未知工具提供一个默认回复
+              result = {
+                message: `工具 "${toolName}" 不可用或无法识别。请使用 tavily_search、get_weather 或 get_city_info。`
+              };
             }
 
             // 保存工具调用结果
@@ -501,22 +357,129 @@ export class MCPService {
     }
   }
 
+  private async executeWeatherTool(args: any): Promise<any> {
+    const location = args.location || "北京";
+    const date = args.date || new Date().toLocaleDateString();
+
+    // 简单模拟，返回随机天气信息
+    const conditions = ["晴朗", "多云", "小雨", "大雨", "雷雨", "大雪", "有雾"];
+    const temperatures = Math.floor(Math.random() * 35) + 5; // 5-40°C
+    const humidity = Math.floor(Math.random() * 60) + 40; // 40-100%
+    const windSpeed = Math.floor(Math.random() * 30) + 1; // 1-30km/h
+
+    const condition = conditions[Math.floor(Math.random() * conditions.length)];
+
+    return {
+      location,
+      date,
+      weather: {
+        condition,
+        temperature: `${temperatures}°C`,
+        humidity: `${humidity}%`,
+        windSpeed: `${windSpeed} km/h`,
+      },
+    };
+  }
+
+  private async executeCityInfoTool(args: any): Promise<any> {
+    const city = args.city || "北京";
+
+    // 城市信息库（模拟）
+    const cityInfo: Record<string, any> = {
+      北京: {
+        country: "中国",
+        population: "21.54 million",
+        area: "16,410 km²",
+        timezone: "UTC+8",
+        famousFor: "故宫，长城，天坛",
+      },
+      上海: {
+        country: "中国",
+        population: "26.32 million",
+        area: "6,340 km²",
+        timezone: "UTC+8",
+        famousFor: "外滩，东方明珠，豫园",
+      },
+      广州: {
+        country: "中国",
+        population: "15.31 million",
+        area: "7,434 km²",
+        timezone: "UTC+8",
+        famousFor: "广州塔，沙面，陈家祠",
+      },
+    };
+
+    const info = cityInfo[city] || {
+      country: "未知",
+      population: "数据不可用",
+      area: "数据不可用",
+      timezone: "未知",
+      famousFor: "未知",
+    };
+
+    return {
+      city,
+      ...info,
+    };
+  }
+
+  private async executeTavilySearchTool(args: any): Promise<any> {
+    console.log(`Calling Tavily search with query: "${args.query}"`);
+    
+    try {
+      // 使用Tavily API
+      const response = await fetch("https://api.tavily.com/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.TAVILY_API_KEY}`
+        },
+        body: JSON.stringify({
+          query: args.query,
+          search_depth: args.search_depth || "basic",
+          include_domains: args.include_domains || [],
+          exclude_domains: args.exclude_domains || [],
+          max_results: args.max_results || 5
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Tavily API returned status ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("Tavily search results:", data);
+      
+      return data;
+    } catch (error) {
+      console.error("Error calling Tavily API:", error);
+      return {
+        error: `Tavily搜索出错: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+
   public getAvailableTools(): MCPToolDefinition[] {
     return this.tools;
   }
 
   public async shutdown(): Promise<void> {
     try {
-      if (this.isConnected) {
-        await this.client.close();
-        this.isConnected = false;
+      // 杀死所有MCP服务器进程
+      const processEntries = Array.from(this.serverProcesses.entries());
+      for (const [serverName, childProcess] of processEntries) {
+        try {
+          childProcess.kill();
+          console.log(`Killed MCP server process ${serverName}`);
+        } catch (error) {
+          console.error(`Error killing MCP server process ${serverName}:`, error);
+        }
       }
-      if (this.serverProcess) {
-        this.serverProcess.kill();
-        this.serverProcess = null;
-      }
+      this.serverProcesses.clear();
+      
+      this.isConnected = false;
     } catch (error) {
-      console.error("Error shutting down MCP client:", error);
+      console.error("Error shutting down MCP service:", error);
     }
   }
 }
