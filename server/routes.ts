@@ -13,6 +13,7 @@ import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { generateChatCompletion, type ChatMessage } from "./openai";
 import { DEFAULT_SYSTEM_PROMPTS } from "./systemPrompts";
+import { mcpService } from "./mcp-client";
 
 // Mock user ID for demo purposes
 const MOCK_USER_ID = 1;
@@ -353,27 +354,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Tool is disabled" });
       }
       
-      // Execute the tool (in a real app, this would call the actual tool)
-      // For this demo, we'll just return a mock result
-      const toolResult = {
-        success: true,
-        data: {
-          message: `Tool "${tool.name}" executed successfully with parameters: ${JSON.stringify(parameters)}`,
-          timestamp: new Date().toISOString()
+      try {
+        // 初始化MCP服务（如果尚未初始化）
+        if (!mcpService.getAvailableTools().length) {
+          await mcpService.initialize();
         }
-      };
+        
+        // 找到匹配的MCP工具
+        const availableTools = mcpService.getAvailableTools();
+        const mcpTool = availableTools.find(t => t.name.toLowerCase().includes(tool.name.toLowerCase()) || 
+                                             t.description.toLowerCase().includes(tool.description.toLowerCase()));
+        
+        let toolResult;
+        
+        if (mcpTool) {
+          // 使用MCP客户端调用工具
+          const result = await mcpService.processWithTools(`使用${tool.name}工具，参数：${JSON.stringify(parameters)}`);
+          toolResult = result.toolCalls.length > 0 ? result.toolCalls[0].result : null;
+        } else {
+          // 如果找不到匹配的MCP工具，返回模拟结果
+          toolResult = {
+            success: true,
+            data: {
+              message: `Tool "${tool.name}" executed successfully with parameters: ${JSON.stringify(parameters)}`,
+              timestamp: new Date().toISOString()
+            }
+          };
+        }
       
-      // Store the tool call as a message
-      await storage.createMessage({
-        role: 'tool',
-        content: `Tool "${tool.name}" was called`,
-        userId: userIdToUse,
-        conversationId,
-        toolCall: { toolId, parameters },
-        toolResult
-      });
-      
-      res.json({ result: toolResult });
+        // 存储工具调用作为消息
+        await storage.createMessage({
+          role: 'tool',
+          content: `Tool "${tool.name}" was called`,
+          userId: userIdToUse,
+          conversationId,
+          toolCall: { toolId, parameters },
+          toolResult
+        });
+        
+        res.json({ result: toolResult });
+      } catch (error) {
+        console.error("Error calling MCP tool:", error);
+        
+        // 返回错误信息
+        const toolResult = {
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        };
+        
+        // 存储错误信息作为消息
+        await storage.createMessage({
+          role: 'tool',
+          content: `Tool "${tool.name}" call failed`,
+          userId: userIdToUse,
+          conversationId,
+          toolCall: { toolId, parameters },
+          toolResult
+        });
+        
+        res.json({ result: toolResult });
+      }
     } catch (error) {
       handleError(error, res);
     }
