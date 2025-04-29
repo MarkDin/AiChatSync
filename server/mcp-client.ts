@@ -38,11 +38,11 @@ export class MCPService {
 
   public async initialize(): Promise<void> {
     try {
-      // 启动MCP服务器
-      const serverScriptPath = path.resolve(process.cwd(), 'build', 'server', 'mcp-server.js');
+      // 直接运行MCP服务器脚本
+      const serverScriptPath = path.resolve(process.cwd(), 'server', 'mcp-server.ts');
       
       this.transport = new StdioClientTransport({
-        command: process.execPath,
+        command: 'tsx',
         args: [serverScriptPath],
       });
 

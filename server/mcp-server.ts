@@ -83,97 +83,71 @@ async function main() {
   });
   
   // 注册天气工具
-  server.onTool({
+  server.registerTool({
     name: "get_weather",
-    handler: async (request) => {
+    description: "获取指定地点的天气信息",
+    inputSchema: {
+      type: "object",
+      properties: {
+        location: {
+          type: "string",
+          description: "城市名称（如：北京，上海）"
+        },
+        date: {
+          type: "string",
+          description: "日期（可选，格式：YYYY-MM-DD）"
+        }
+      },
+      required: ["location"]
+    },
+    handler: async (params: unknown) => {
       try {
-        const params = request.params as WeatherParams;
-        const result = await getWeather(params);
+        const result = await getWeather(params as WeatherParams);
         return {
-          result: {
-            status: "success",
-            content: result
-          }
+          status: "success",
+          content: result
         };
       } catch (error) {
         return {
-          error: {
-            code: -32000,
-            message: `获取天气信息失败: ${error instanceof Error ? error.message : String(error)}`
-          }
+          status: "error",
+          error: `获取天气信息失败: ${error instanceof Error ? error.message : String(error)}`
         };
       }
     }
   });
   
   // 注册城市信息工具
-  server.onTool({
+  server.registerTool({
     name: "get_city_info",
-    handler: async (request) => {
+    description: "获取城市的基本信息",
+    inputSchema: {
+      type: "object",
+      properties: {
+        city: {
+          type: "string",
+          description: "城市名称（如：北京，上海，广州）"
+        }
+      },
+      required: ["city"]
+    },
+    handler: async (params: unknown) => {
       try {
-        const params = request.params as { city: string };
-        const result = await getCityInfo(params);
+        const result = await getCityInfo(params as { city: string });
         return {
-          result: {
-            status: "success",
-            content: result
-          }
+          status: "success",
+          content: result
         };
       } catch (error) {
         return {
-          error: {
-            code: -32000,
-            message: `获取城市信息失败: ${error instanceof Error ? error.message : String(error)}`
-          }
+          status: "error",
+          error: `获取城市信息失败: ${error instanceof Error ? error.message : String(error)}`
         };
       }
     }
   });
   
-  // 提供工具目录服务
-  server.onListTools(async (request) => {
-    return {
-      result: {
-        tools: [
-          {
-            name: "get_weather",
-            description: "获取指定地点的天气信息",
-            inputSchema: {
-              type: "object",
-              properties: {
-                location: {
-                  type: "string",
-                  description: "城市名称（如：北京，上海）"
-                },
-                date: {
-                  type: "string",
-                  description: "日期（可选，格式：YYYY-MM-DD）"
-                }
-              },
-              required: ["location"]
-            }
-          },
-          {
-            name: "get_city_info",
-            description: "获取城市的基本信息",
-            inputSchema: {
-              type: "object",
-              properties: {
-                city: {
-                  type: "string",
-                  description: "城市名称（如：北京，上海，广州）"
-                }
-              },
-              required: ["city"]
-            }
-          }
-        ]
-      }
-    };
-  });
-  
   // 启动服务器
-  await server.start(transport);
+  server.serve(transport);
   console.log("MCP Server started and ready to handle requests");
 }
 
