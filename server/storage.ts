@@ -98,6 +98,15 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return updatedConversation;
   }
+  
+  async updateConversationTools(id: number, enabledTools: number[]): Promise<Conversation> {
+    const [updatedConversation] = await db
+      .update(conversations)
+      .set({ enabledTools })
+      .where(eq(conversations.id, id))
+      .returning();
+    return updatedConversation;
+  }
 
   async deleteConversation(id: number): Promise<void> {
     // First delete all messages in this conversation
@@ -234,6 +243,66 @@ export class DatabaseStorage implements IStorage {
       .where(eq(systemPrompts.id, id))
       .returning();
     return updatedPrompt;
+  }
+  
+  // MCP Tool methods
+  async getMcpTool(id: number): Promise<McpTool | undefined> {
+    const [tool] = await db
+      .select()
+      .from(mcpTools)
+      .where(eq(mcpTools.id, id));
+    return tool || undefined;
+  }
+
+  async getUserMcpTools(userId: number): Promise<McpTool[]> {
+    return db
+      .select()
+      .from(mcpTools)
+      .where(eq(mcpTools.userId, userId))
+      .orderBy(desc(mcpTools.timestamp));
+  }
+  
+  async getEnabledMcpTools(userId: number): Promise<McpTool[]> {
+    return db
+      .select()
+      .from(mcpTools)
+      .where(and(
+        eq(mcpTools.userId, userId),
+        eq(mcpTools.isEnabled, true)
+      ))
+      .orderBy(desc(mcpTools.timestamp));
+  }
+
+  async createMcpTool(tool: InsertMcpTool): Promise<McpTool> {
+    const [newTool] = await db
+      .insert(mcpTools)
+      .values(tool)
+      .returning();
+    return newTool;
+  }
+
+  async updateMcpTool(id: number, tool: Partial<InsertMcpTool>): Promise<McpTool> {
+    const [updatedTool] = await db
+      .update(mcpTools)
+      .set(tool)
+      .where(eq(mcpTools.id, id))
+      .returning();
+    return updatedTool;
+  }
+
+  async deleteMcpTool(id: number): Promise<void> {
+    await db
+      .delete(mcpTools)
+      .where(eq(mcpTools.id, id));
+  }
+  
+  async toggleMcpToolStatus(id: number, isEnabled: boolean): Promise<McpTool> {
+    const [updatedTool] = await db
+      .update(mcpTools)
+      .set({ isEnabled })
+      .where(eq(mcpTools.id, id))
+      .returning();
+    return updatedTool;
   }
 }
 

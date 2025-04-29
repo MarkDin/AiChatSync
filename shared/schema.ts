@@ -66,7 +66,7 @@ export const conversations = pgTable("conversations", {
   title: text("title").notNull(),
   userId: integer("user_id").references(() => users.id),
   systemPromptId: integer("system_prompt_id").references(() => systemPrompts.id),
-  enabledTools: jsonb("enabled_tools").default([]).notNull(),
+  enabledTools: jsonb("enabled_tools").$type<number[]>().default([]).notNull(),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
 });
 
