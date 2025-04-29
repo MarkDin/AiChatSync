@@ -1,17 +1,83 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Message } from "@shared/schema";
-import { MessageSquare, User } from "lucide-react";
+import { MessageSquare, User, WrenchIcon, ArrowRight } from "lucide-react";
 import LoadingDots from "@/components/ui/loading-dots";
 import ReactMarkdown from "react-markdown";
+import { Badge } from "@/components/ui/badge";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 interface MessageHistoryProps {
   messages: Message[];
   isLoading: boolean;
 }
 
+// 工具调用组件
+function ToolCall({ toolCall }: { toolCall: any }) {
+  const [mcpTool, setMcpTool] = useState<any>(null);
+  
+  // 获取工具信息
+  const { data: tool } = useQuery({
+    queryKey: ['/api/mcp-tools', toolCall?.toolId],
+    queryFn: async () => {
+      if (!toolCall?.toolId) return null;
+      
+      const response = await apiRequest('GET', `/api/mcp-tools/${toolCall.toolId}`);
+      if (!response.ok) {
+        if (response.status === 404) return null;
+        throw new Error('Failed to fetch MCP tool');
+      }
+      const data = await response.json();
+      return data.tool;
+    },
+    enabled: !!toolCall?.toolId
+  });
+
+  useEffect(() => {
+    if (tool) {
+      setMcpTool(tool);
+    }
+  }, [tool]);
+
+  if (!toolCall) return null;
+
+  return (
+    <div className="border border-dashed border-gray-300 dark:border-gray-600 rounded-md p-3 mt-2 bg-gray-50 dark:bg-gray-900">
+      <div className="flex items-center mb-2">
+        <WrenchIcon className="h-4 w-4 mr-2 text-gray-600 dark:text-gray-400" />
+        <span className="font-medium text-sm">
+          {mcpTool?.name || '工具调用'} 
+          <Badge className="ml-2 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+            使用工具
+          </Badge>
+        </span>
+      </div>
+      {toolCall.parameters && (
+        <div className="mb-2">
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">参数:</div>
+          <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded font-mono overflow-x-auto">
+            {JSON.stringify(toolCall.parameters, null, 2)}
+          </pre>
+        </div>
+      )}
+      {toolCall.result && (
+        <div>
+          <div className="flex items-center mb-1 text-xs text-gray-500 dark:text-gray-400">
+            <ArrowRight className="h-3 w-3 mr-1" />
+            结果:
+          </div>
+          <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded font-mono overflow-x-auto">
+            {JSON.stringify(toolCall.result, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MessageHistory({ messages, isLoading }: MessageHistoryProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-
+  
   // Scroll to bottom when messages change
   useEffect(() => {
     if (containerRef.current) {
@@ -44,6 +110,20 @@ export default function MessageHistory({ messages, isLoading }: MessageHistoryPr
           >
             <div className="prose dark:prose-invert prose-sm max-w-none">
               <ReactMarkdown>{message.content}</ReactMarkdown>
+              
+              {/* 如果是助手消息且有工具调用 */}
+              {message.role === 'assistant' && message.toolCall && (
+                <ToolCall toolCall={message.toolCall} />
+              )}
+              
+              {/* 如果是工具消息 */}
+              {message.role === 'tool' && message.toolResult && (
+                <div className="mt-2">
+                  <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded font-mono overflow-x-auto">
+                    {JSON.stringify(message.toolResult, null, 2)}
+                  </pre>
+                </div>
+              )}
             </div>
           </div>
           
